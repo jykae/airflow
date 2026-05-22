@@ -421,7 +421,7 @@ class KubernetesJobOperator(KubernetesPodOperator):
         # deferred trigger still needs the monitoring pods to exist; the pods
         # will be cleaned up by execute_complete() on resume.
         exc = sys.exc_info()[1]
-        if exc is not None and isinstance(exc, TaskDeferred):
+        if isinstance(exc, TaskDeferred):
             return
         for pod in getattr(self, "pods", None) or []:
             remote_pod = pod

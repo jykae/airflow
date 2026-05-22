@@ -1458,14 +1458,14 @@ class TestKubernetesJobOperator:
         mock_post_complete_action,
     ):
         mock_hook.return_value.is_job_failed.return_value = "Error"
-        mock_pod_1 = mock.MagicMock()
+        mock_pod_1 = mock.create_autospec(k8s.V1Pod, instance=True)
         mock_get_pods.return_value = [mock_pod_1]
         mock_find_pod.return_value = mock_pod_1
         mock_post_complete_action.side_effect = AirflowException("cleanup boom")
 
         op = KubernetesJobOperator(task_id="test_task_id", wait_until_job_complete=True)
         with pytest.raises(AirflowException, match="is failed with error"):
-            op.execute(context=dict(ti=mock.MagicMock()))
+            op.execute(context=dict(ti=mock.create_autospec(TaskInstance, instance=True)))
 
         mock_post_complete_action.assert_called_once()
 
