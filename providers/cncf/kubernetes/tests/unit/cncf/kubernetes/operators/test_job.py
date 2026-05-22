@@ -1210,15 +1210,17 @@ class TestKubernetesJobOperator:
         mock_post_complete_action,
     ):
         mock_hook.return_value.is_job_failed.return_value = False
-        mock_pod_1 = mock.MagicMock()
-        mock_pod_2 = mock.MagicMock()
+        mock_pod_1 = mock.create_autospec(k8s.V1Pod, instance=True)
+        mock_pod_2 = mock.create_autospec(k8s.V1Pod, instance=True)
         mock_get_pods.return_value = [mock_pod_1, mock_pod_2]
-        mock_find_pod.side_effect = lambda namespace, context: mock.MagicMock()
+        mock_find_pod.side_effect = (
+            lambda namespace, context: mock.create_autospec(k8s.V1Pod, instance=True)
+        )
 
         op = KubernetesJobOperator(
             task_id="test_task_id", wait_until_job_complete=True, parallelism=2
         )
-        op.execute(context=dict(ti=mock.MagicMock()))
+        op.execute(context=dict(ti=mock.create_autospec(TaskInstance, instance=True)))
 
         assert mock_post_complete_action.call_count == 2
         called_pods = [call.kwargs["pod"] for call in mock_post_complete_action.call_args_list]
