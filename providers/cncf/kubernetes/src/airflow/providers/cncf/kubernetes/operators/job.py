@@ -298,8 +298,14 @@ class KubernetesJobOperator(KubernetesPodOperator):
                         pod_name,
                         pod_namespace,
                     )
-                    continue
-                raise
+                else:
+                    self.log.warning(
+                        "Failed to retrieve pod %s in namespace %s: %s. Skipping.",
+                        pod_name,
+                        pod_namespace,
+                        e,
+                    )
+                continue
             if pod is not None:
                 pods_by_name[pod_name] = pod
 
