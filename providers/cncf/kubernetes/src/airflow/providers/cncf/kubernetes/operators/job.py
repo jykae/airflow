@@ -387,14 +387,18 @@ class KubernetesJobOperator(KubernetesPodOperator):
         if exc is not None and type(exc).__name__ == "TaskDeferred":
             return
         for pod in getattr(self, "pods", None) or []:
+            remote_pod = pod
             try:
-                remote_pod = self.find_pod(pod.metadata.namespace, context=context)
+                pod_name = getattr(pod.metadata, "name", None)
+                pod_namespace = getattr(pod.metadata, "namespace", None)
+                if pod_name and pod_namespace:
+                    remote_pod = self.hook.get_pod(name=pod_name, namespace=pod_namespace) or pod
             except Exception:
                 remote_pod = pod
             try:
                 self.post_complete_action(
                     pod=pod,
-                    remote_pod=remote_pod or pod,
+                    remote_pod=remote_pod,
                     context=context,
                     result=None,
                 )
