@@ -726,11 +726,14 @@ discovered pods at the end of the task:
   finishes (success or failure).
 * ``delete_succeeded_pod`` — the pod is deleted only when the task
   succeeded.
+* ``delete_active_pod`` — the pod is deleted only if it is still
+  active (``Pending`` or ``Running``).
 * ``keep_pod`` — the pod is kept (useful for offline log
   inspection).
 
-When the task is killed, ``on_kill`` deletes the Job (with foreground cascade)
-and additionally attempts pod deletion directly for the discovered pods.
+When the task is killed, ``on_kill`` deletes the Job (with foreground cascade).
+For discovered pods, deletion is controlled by ``on_kill_action``:
+``delete_pod`` attempts direct pod deletion and ``keep_pod`` skips it.
 
 
 
