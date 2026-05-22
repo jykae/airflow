@@ -45,7 +45,7 @@ from airflow.providers.cncf.kubernetes.pod_generator import PodGenerator, merge_
 from airflow.providers.cncf.kubernetes.triggers.job import KubernetesJobTrigger
 from airflow.providers.cncf.kubernetes.utils.pod_manager import EMPTY_XCOM_RESULT
 from airflow.providers.cncf.kubernetes.version_compat import AIRFLOW_V_3_1_PLUS
-from airflow.providers.common.compat.sdk import AirflowException, conf
+from airflow.providers.common.compat.sdk import AirflowException, TaskDeferred, conf
 from airflow.utils import yaml
 
 if AIRFLOW_V_3_1_PLUS:
@@ -384,7 +384,7 @@ class KubernetesJobOperator(KubernetesPodOperator):
         # deferred trigger still needs the monitoring pods to exist; the pods
         # will be cleaned up by execute_complete() on resume.
         exc = sys.exc_info()[1]
-        if exc is not None and type(exc).__name__ == "TaskDeferred":
+        if exc is not None and isinstance(exc, TaskDeferred):
             return
         for pod in getattr(self, "pods", None) or []:
             remote_pod = pod
