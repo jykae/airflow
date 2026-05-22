@@ -43,7 +43,7 @@ from airflow.providers.cncf.kubernetes.kubernetes_helper_functions import (
 from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 from airflow.providers.cncf.kubernetes.pod_generator import PodGenerator, merge_objects
 from airflow.providers.cncf.kubernetes.triggers.job import KubernetesJobTrigger
-from airflow.providers.cncf.kubernetes.utils.pod_manager import EMPTY_XCOM_RESULT, PodNotFoundException
+from airflow.providers.cncf.kubernetes.utils.pod_manager import EMPTY_XCOM_RESULT
 from airflow.providers.cncf.kubernetes.version_compat import AIRFLOW_V_3_1_PLUS
 from airflow.providers.common.compat.sdk import AirflowException, conf
 from airflow.utils import yaml
@@ -318,10 +318,7 @@ class KubernetesJobOperator(KubernetesPodOperator):
                             "Skipping log retrieval for pod %s (not found).", pod_name
                         )
                         continue
-                    pod = pods_by_name[pod_name]
-                    if not pod:
-                        raise PodNotFoundException("Could not find pod after resuming from deferral")
-                    self._write_logs(pod)
+                    self._write_logs(pods_by_name[pod_name])
 
             if self.do_xcom_push:
                 xcom_results: list[Any | None] = []
@@ -423,7 +420,7 @@ class KubernetesJobOperator(KubernetesPodOperator):
         for pod_name, pod in pods_by_name.items():
             try:
                 self.post_complete_action(
-                    pod=pod, remote_pod=pod, context=context, result=None,
+                    pod=pod, remote_pod=pod, context=context, result=None
                 )
             except Exception:
                 self.log.warning(

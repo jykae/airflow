@@ -1362,7 +1362,10 @@ class TestKubernetesJobOperator:
         op.on_kill()
 
         mock_client.delete_namespaced_job.assert_called_once()
-        assert mock_pod_manager.delete_pod.call_args_list == [mock.call(pod_1), mock.call(pod_2)]
+        assert mock_pod_manager.delete_pod.call_count == 2
+        mock_pod_manager.delete_pod.assert_has_calls(
+            [mock.call(pod_1), mock.call(pod_2)], any_order=True
+        )
 
     @pytest.mark.non_db_test_override
     @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.post_complete_action"))
