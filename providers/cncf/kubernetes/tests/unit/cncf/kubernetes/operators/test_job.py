@@ -1370,7 +1370,10 @@ class TestKubernetesJobOperator:
         mock_post_complete_action.assert_called_once()
         assert mock_post_complete_action.call_args.kwargs["pod"] is pod
 
-
+    @pytest.mark.non_db_test_override
+    @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.pod_manager"), new_callable=mock.PropertyMock)
+    @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.job_client"))
+    def test_on_kill_deletes_monitoring_pods(self, mock_client, mock_pod_manager_prop):
         mock_pod_manager = mock.MagicMock()
         mock_pod_manager_prop.return_value = mock_pod_manager
 
