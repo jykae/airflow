@@ -713,6 +713,31 @@ It means that user can use all parameters from :class:`~airflow.providers.cncf.k
 
 More information about the Jobs here: `Kubernetes Job Documentation <https://kubernetes.io/docs/concepts/workloads/controllers/job/>`__
 
+Pod cleanup and ``on_finish_action``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+In addition to the worker pods owned by the ``V1Job`` (which are reaped by
+``ttl_seconds_after_finished``), the operator also creates one monitoring /
+log-streaming pod per task run via the underlying
+:class:`~airflow.providers.cncf.kubernetes.operators.pod.KubernetesPodOperator`
+machinery. Those pods have no ``ownerReferences`` to the Job, so the Job
+controller's TTL and the ``Foreground`` cascade used by ``on_kill`` do **not**
+delete them.
+
+The inherited ``on_finish_action`` parameter therefore controls what happens to
+these monitoring pods at the end of the task:
+
+* ``delete_pod`` (default) — the monitoring pod is deleted after the task
+  finishes (success or failure).
+* ``delete_succeeded_pod`` — the monitoring pod is deleted only when the task
+  succeeded.
+* ``keep_pod`` — the monitoring pod is kept (useful for offline log
+  inspection).
+
+When the task is killed, ``on_kill`` deletes the Job (with foreground cascade)
+and additionally deletes the monitoring pods directly.
+
+
 
 .. _howto/operator:KubernetesDeleteJobOperator:
 
