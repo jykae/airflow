@@ -294,6 +294,7 @@ class KubernetesJobOperator(KubernetesPodOperator):
             else None
         )
         pod_namespace = event.get("pod_namespace") or event.get("namespace") or job_namespace
+        unresolved_pods: list[tuple[str, str]] = []
         for pod_name in event.get("pod_names") or []:
             if not pod_namespace:
                 self.log.warning(
@@ -317,6 +318,7 @@ class KubernetesJobOperator(KubernetesPodOperator):
                         pod_namespace,
                         e,
                     )
+                    unresolved_pods.append((pod_name, pod_namespace))
                 continue
             except Exception as e:
                 self.log.warning(
@@ -325,6 +327,7 @@ class KubernetesJobOperator(KubernetesPodOperator):
                     pod_namespace,
                     e,
                 )
+                unresolved_pods.append((pod_name, pod_namespace))
                 continue
             if pod is not None:
                 pods_by_name[pod_name] = pod
@@ -356,7 +359,9 @@ class KubernetesJobOperator(KubernetesPodOperator):
                     xcom_results.append(json.loads(xcom_result))
                 return xcom_results[0] if self.unwrap_single and len(xcom_results) == 1 else xcom_results
         finally:
-            self._cleanup_monitoring_pods_from_dict(context, pods_by_name)
+            self._cleanup_monitoring_pods_from_dict(
+                context, pods_by_name, unresolved_pods=unresolved_pods, event_status=event.get("status")
+            )
 
     @staticmethod
     def deserialize_job_template_file(path: str) -> k8s.V1Job:
@@ -451,7 +456,12 @@ class KubernetesJobOperator(KubernetesPodOperator):
                 )
 
     def _cleanup_monitoring_pods_from_dict(
-        self, context: Context, pods_by_name: dict[str, k8s.V1Pod]
+        self,
+        context: Context,
+        pods_by_name: dict[str, k8s.V1Pod],
+        *,
+        unresolved_pods: list[tuple[str, str]] | None = None,
+        event_status: str | None = None,
     ) -> None:
         """Run ``post_complete_action`` on each pod previously resolved via the trigger event.
 
@@ -469,6 +479,13 @@ class KubernetesJobOperator(KubernetesPodOperator):
                     pod_name,
                     exc_info=True,
                 )
+        pod_phase = "Succeeded" if event_status == "success" else "Failed" if event_status == "error" else None
+        for pod_name, pod_namespace in unresolved_pods or []:
+            fallback_pod = k8s.V1Pod(
+                metadata=k8s.V1ObjectMeta(name=pod_name, namespace=pod_namespace),
+                status=k8s.V1PodStatus(phase=pod_phase),
+            )
+            self.process_pod_deletion(fallback_pod, reraise=False)
 
     def build_job_request_obj(self, context: Context | None = None) -> k8s.V1Job:
         """

@@ -716,26 +716,21 @@ More information about the Jobs here: `Kubernetes Job Documentation <https://kub
 Pod cleanup and ``on_finish_action``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-In addition to the worker pods owned by the ``V1Job`` (which are reaped by
-``ttl_seconds_after_finished``), the operator also creates one monitoring /
-log-streaming pod per task run via the underlying
-:class:`~airflow.providers.cncf.kubernetes.operators.pod.KubernetesPodOperator`
-machinery. Those pods have no ``ownerReferences`` to the Job, so the Job
-controller's TTL and the ``Foreground`` cascade used by ``on_kill`` do **not**
-delete them.
+When ``wait_until_job_complete=True``, the operator discovers Job pods via
+``get_pods()`` and streams logs/XCom from those pods while the Job runs.
 
-The inherited ``on_finish_action`` parameter therefore controls what happens to
-these monitoring pods at the end of the task:
+The inherited ``on_finish_action`` parameter controls what happens to these
+discovered pods at the end of the task:
 
-* ``delete_pod`` (default) — the monitoring pod is deleted after the task
+* ``delete_pod`` (default) — the pod is deleted after the task
   finishes (success or failure).
-* ``delete_succeeded_pod`` — the monitoring pod is deleted only when the task
+* ``delete_succeeded_pod`` — the pod is deleted only when the task
   succeeded.
-* ``keep_pod`` — the monitoring pod is kept (useful for offline log
+* ``keep_pod`` — the pod is kept (useful for offline log
   inspection).
 
 When the task is killed, ``on_kill`` deletes the Job (with foreground cascade)
-and additionally deletes the monitoring pods directly.
+and additionally attempts pod deletion directly for the discovered pods.
 
 
 
