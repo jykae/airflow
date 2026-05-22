@@ -25,7 +25,6 @@ import os
 import sys
 import warnings
 from collections.abc import Sequence
-from contextlib import suppress
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -369,8 +368,13 @@ class KubernetesJobOperator(KubernetesPodOperator):
         # Monitoring pods discovered via get_pods() have no ownerReferences and
         # are not reaped by the Job's foreground cascade. Delete them directly.
         for pod in getattr(self, "pods", None) or []:
-            with suppress(ApiException):
+            try:
                 self.pod_manager.delete_pod(pod)
+            except ApiException:
+                self.log.exception(
+                    "Unable to delete monitoring pod %s",
+                    getattr(pod.metadata, "name", "<unknown>"),
+                )
 
     def _cleanup_monitoring_pods(self, context: Context) -> None:
         """Run ``post_complete_action`` on each monitoring pod from ``self.pods``.

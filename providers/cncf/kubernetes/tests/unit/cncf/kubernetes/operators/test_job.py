@@ -1256,8 +1256,7 @@ class TestKubernetesJobOperator:
         assert mock_post_complete_action.call_args.kwargs["pod"] is mock_pod_1
 
     @pytest.mark.non_db_test_override
-    @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.process_pod_deletion"))
-    @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.find_pod"))
+    @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.pod_manager"), new_callable=mock.PropertyMock)
     @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.get_pods"))
     @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.build_job_request_obj"))
     @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.create_job"))
@@ -1268,18 +1267,19 @@ class TestKubernetesJobOperator:
         mock_create_job,
         mock_build_job_request_obj,
         mock_get_pods,
-        mock_find_pod,
-        mock_process_pod_deletion,
+        mock_pod_manager_prop,
     ):
         """When on_finish_action=keep_pod, no monitoring pod should be deleted."""
+        mock_pod_manager = mock.MagicMock()
+        mock_pod_manager_prop.return_value = mock_pod_manager
         mock_hook.return_value.is_job_failed.return_value = False
-        # Use a remote pod with a SUCCEEDED phase so cleanup() doesn't raise.
+        # Return a pod with SUCCEEDED phase so cleanup() doesn't raise.
         remote_pod = mock.MagicMock()
         remote_pod.status.phase = "Succeeded"
         remote_pod.status.container_statuses = []
         mock_pod_1 = mock.MagicMock()
         mock_get_pods.return_value = [mock_pod_1]
-        mock_find_pod.return_value = remote_pod
+        mock_hook.return_value.get_pod.return_value = remote_pod
 
         op = KubernetesJobOperator(
             task_id="test_task_id",
@@ -1288,11 +1288,10 @@ class TestKubernetesJobOperator:
         )
         op.execute(context=dict(ti=mock.MagicMock()))
 
-        mock_process_pod_deletion.assert_not_called()
+        mock_pod_manager.delete_pod.assert_not_called()
 
     @pytest.mark.non_db_test_override
-    @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.process_pod_deletion"))
-    @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.find_pod"))
+    @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.pod_manager"), new_callable=mock.PropertyMock)
     @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.get_pods"))
     @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.build_job_request_obj"))
     @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.create_job"))
@@ -1303,23 +1302,23 @@ class TestKubernetesJobOperator:
         mock_create_job,
         mock_build_job_request_obj,
         mock_get_pods,
-        mock_find_pod,
-        mock_process_pod_deletion,
+        mock_pod_manager_prop,
     ):
         """With the default on_finish_action=delete_pod the monitoring pod is deleted."""
+        mock_pod_manager = mock.MagicMock()
+        mock_pod_manager_prop.return_value = mock_pod_manager
         mock_hook.return_value.is_job_failed.return_value = False
         remote_pod = mock.MagicMock()
         remote_pod.status.phase = "Succeeded"
         remote_pod.status.container_statuses = []
         mock_pod_1 = mock.MagicMock()
         mock_get_pods.return_value = [mock_pod_1]
-        mock_find_pod.return_value = remote_pod
+        mock_hook.return_value.get_pod.return_value = remote_pod
 
         op = KubernetesJobOperator(task_id="test_task_id", wait_until_job_complete=True)
         op.execute(context=dict(ti=mock.MagicMock()))
 
-        mock_process_pod_deletion.assert_called_once()
-        assert mock_process_pod_deletion.call_args.args[0] is remote_pod
+        mock_pod_manager.delete_pod.assert_called_once_with(remote_pod)
 
     @pytest.mark.non_db_test_override
     @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.post_complete_action"))
@@ -1346,9 +1345,32 @@ class TestKubernetesJobOperator:
         assert mock_post_complete_action.call_args.kwargs["pod"] is pod
 
     @pytest.mark.non_db_test_override
-    @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.pod_manager"), new_callable=mock.PropertyMock)
-    @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.job_client"))
-    def test_on_kill_deletes_monitoring_pods(self, mock_client, mock_pod_manager_prop):
+    @patch(JOB_OPERATORS_PATH.format("KubernetesJobOperator.post_complete_action"))
+    @patch(HOOK_CLASS)
+    def test_execute_complete_cleans_up_pods_when_get_logs_false(self, mock_hook, mock_post_complete_action):
+        """Monitoring pods are cleaned up in execute_complete even when get_logs=False."""
+        pod = mock.MagicMock()
+        mock_hook.return_value.get_pod.return_value = pod
+        # Simulate an event emitted by the trigger when get_logs=False:
+        # pod_names and pod_namespace are now always present in the event.
+        event = {
+            "status": "success",
+            "message": "ok",
+            "job": {"metadata": {"name": JOB_NAME, "namespace": JOB_NAMESPACE}},
+            "pod_names": [POD_NAME],
+            "pod_namespace": POD_NAMESPACE,
+            "xcom_result": None,
+        }
+
+        KubernetesJobOperator(task_id="test_task_id", get_logs=False).execute_complete(
+            context=dict(ti=mock.MagicMock()), event=event
+        )
+
+        mock_hook.return_value.get_pod.assert_called_with(POD_NAME, POD_NAMESPACE)
+        mock_post_complete_action.assert_called_once()
+        assert mock_post_complete_action.call_args.kwargs["pod"] is pod
+
+
         mock_pod_manager = mock.MagicMock()
         mock_pod_manager_prop.return_value = mock_pod_manager
 
