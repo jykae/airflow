@@ -42,7 +42,7 @@ from airflow.providers.cncf.kubernetes.kubernetes_helper_functions import (
 from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 from airflow.providers.cncf.kubernetes.pod_generator import PodGenerator, merge_objects
 from airflow.providers.cncf.kubernetes.triggers.job import KubernetesJobTrigger
-from airflow.providers.cncf.kubernetes.utils.pod_manager import EMPTY_XCOM_RESULT
+from airflow.providers.cncf.kubernetes.utils.pod_manager import EMPTY_XCOM_RESULT, OnKillAction
 from airflow.providers.cncf.kubernetes.version_compat import AIRFLOW_V_3_1_PLUS
 from airflow.providers.common.compat.sdk import AirflowException, TaskDeferred, conf
 from airflow.utils import yaml
@@ -287,8 +287,20 @@ class KubernetesJobOperator(KubernetesPodOperator):
         # cleanup path in the finally block share the same lookup (no double
         # ``hook.get_pod`` calls).
         pods_by_name: dict[str, k8s.V1Pod] = {}
+        event_job = event.get("job")
+        job_namespace = (
+            event_job.get("metadata", {}).get("namespace")
+            if isinstance(event_job, dict)
+            else None
+        )
+        pod_namespace = event.get("pod_namespace") or event.get("namespace") or job_namespace
         for pod_name in event.get("pod_names") or []:
-            pod_namespace = event.get("pod_namespace")
+            if not pod_namespace:
+                self.log.warning(
+                    "Skipping pod %s lookup because no pod namespace was provided in trigger event.",
+                    pod_name,
+                )
+                continue
             try:
                 pod = self.hook.get_pod(pod_name, pod_namespace)
             except ApiException as e:
@@ -305,6 +317,14 @@ class KubernetesJobOperator(KubernetesPodOperator):
                         pod_namespace,
                         e,
                     )
+                continue
+            except Exception as e:
+                self.log.warning(
+                    "Failed to retrieve pod %s in namespace %s: %s. Skipping.",
+                    pod_name,
+                    pod_namespace,
+                    e,
+                )
                 continue
             if pod is not None:
                 pods_by_name[pod_name] = pod
@@ -361,6 +381,7 @@ class KubernetesJobOperator(KubernetesPodOperator):
         return api_client._ApiClient__deserialize_model(job, k8s.V1Job)
 
     def on_kill(self) -> None:
+        self._killed = True
         if self.job:
             job = self.job
             kwargs = {
@@ -371,6 +392,12 @@ class KubernetesJobOperator(KubernetesPodOperator):
             if self.termination_grace_period is not None:
                 kwargs.update(grace_period_seconds=self.termination_grace_period)
             self.job_client.delete_namespaced_job(**kwargs)
+        if self.on_kill_action == OnKillAction.KEEP_POD:
+            self.log.info(
+                "Skipping monitoring pod deletion since on_kill_action is set to %r.",
+                self.on_kill_action.value,
+            )
+            return
         # Monitoring pods discovered via get_pods() have no ownerReferences and
         # are not reaped by the Job's foreground cascade. Delete them directly.
         for pod in getattr(self, "pods", None) or []:
